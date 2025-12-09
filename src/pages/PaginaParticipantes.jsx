@@ -39,7 +39,7 @@ export default function PaginaParticipantes() {
 
   // 2. MQTT (Real-time)
   useEffect(() => {
-    const client = mqtt.connect('ws://broker.hivemq.com:8000/mqtt');
+    const client = mqtt.connect('wss://broker.hivemq.com:8884/mqtt');
 
     client.on('connect', () => {
       console.log('✅ Frontend conectado ao MQTT');
