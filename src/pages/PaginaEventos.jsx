@@ -118,7 +118,7 @@ export default function PaginaEventos() {
 
       {erro && (<Alert severity="error" sx={{ mb: 2 }}>{erro}</Alert>)}
 
-      <ListaEventos eventos={eventos} onEditar={editarEvento} onExcluir={solicitarExclusao} onCadastrarParticipante={abrirListaParticipantes} />
+      <ListaEventos eventos={eventos} onEditar={editarEvento} onExcluir={solicitarExclusao} onVerParticipantes={abrirListaParticipantes} />
 
       {eventos.length === 0 && !erro && (
         <Typography color="textSecondary" textAlign="center" mt={4}>Nenhum evento cadastrado.</Typography>

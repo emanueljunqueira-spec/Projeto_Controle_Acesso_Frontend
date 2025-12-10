@@ -18,6 +18,12 @@ const servicoEvento = {
       data: { emailConfirmacao, senhaConfirmacao } 
     });
     return resp.data;
+  },
+
+  // Listar participantes de um evento específico com status de presença
+  async listarParticipantes(eventoId) {
+    const resp = await api.get(`/eventos/${eventoId}/participantes`);
+    return resp.data;
   }
 };
 

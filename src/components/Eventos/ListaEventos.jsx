@@ -1,11 +1,12 @@
 import React from 'react';
 import { Grid, Paper, Box, Typography, Chip, Button } from '@mui/material';
+import { People as PeopleIcon } from '@mui/icons-material';
 
 function formatarData(iso) {
   try { return new Date(iso).toLocaleString('pt-BR'); } catch { return iso; }
 }
 
-export default function ListaEventos({ eventos, onEditar, onExcluir, onCadastrarParticipante }) {
+export default function ListaEventos({ eventos, onEditar, onExcluir, onVerParticipantes }) {
   return (
     <Grid container spacing={2}>
       {eventos.map(ev => (
@@ -21,8 +22,14 @@ export default function ListaEventos({ eventos, onEditar, onExcluir, onCadastrar
             <Box display="flex" gap={1} mt={1}>
               <Button size="small" variant="outlined" onClick={() => onEditar(ev)}>Editar</Button>
               <Button size="small" variant="outlined" color="error" onClick={() => onExcluir(ev)}>Excluir</Button>
-              <Button size="small" variant="contained" color="success" onClick={() => onCadastrarParticipante(ev)}>
-                Cadastrar Participante
+              <Button 
+                size="small" 
+                variant="contained" 
+                color="primary" 
+                startIcon={<PeopleIcon />}
+                onClick={() => onVerParticipantes(ev)}
+              >
+                Ver Participantes
               </Button>
             </Box>
           </Paper>
