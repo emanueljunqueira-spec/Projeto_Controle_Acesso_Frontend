@@ -1,105 +1,66 @@
-import React, { useState, useEffect } from 'react';
-import mqtt from 'mqtt';
-import { Box, Typography, Button, Grid, Alert, CircularProgress } from '@mui/material';
+import React, { useState, useEffect, useCallback } from 'react'; // Importe useCallback
+import { Box, Typography, Button, Grid, CircularProgress, Card } from '@mui/material';
 import { Add as AddIcon } from '@mui/icons-material';
 import servicoParticipante from '../services/servicoParticipante';
-import { formatarErro, podeExcluir } from '../utils/errorHandler';
-import { useAutenticacao } from '../contexts/ContextoAutenticacao';
+import { formatarErro } from '../utils/errorHandler';
+import { useMensagem } from '../contexts/ContextoMensagem';
+
 import CartaoParticipante from '../components/Cards/CartaoParticipante';
 import ModalParticipante from '../components/Modais/ModalParticipante';
 import ModalConfirmarExclusao from '../components/Modais/ModalConfirmarExclusao';
 import MonitorAcessos from '../components/MonitorAcessos';
 
 export default function PaginaParticipantes() {
-  const { usuario } = useAutenticacao();
+  const { sucesso, erro: erroMsg } = useMensagem();
+  
   const [participantes, setParticipantes] = useState([]);
   const [carregando, setCarregando] = useState(true);
-  const [erro, setErro] = useState(null);
   const [modalAberto, setModalAberto] = useState(false);
   const [modalExclusaoAberto, setModalExclusaoAberto] = useState(false);
   const [participanteParaExcluir, setParticipanteParaExcluir] = useState(null);
 
-  const buscarParticipantes = async () => {
+  // CORREÇÃO: useCallback para estabilizar a função
+  const buscarParticipantes = useCallback(async () => {
     try {
       setCarregando(true);
-      setErro(null);
       const dados = await servicoParticipante.listar();
       setParticipantes(dados);
     } catch (err) {
-      setErro(formatarErro(err));
+      erroMsg(formatarErro(err));
     } finally {
       setCarregando(false);
     }
-  };
+  }, [erroMsg]);
 
-  // 1. Busca inicial
   useEffect(() => {
     buscarParticipantes();
-  }, []);
-
-  // 2. MQTT (Real-time)
-  useEffect(() => {
-    const client = mqtt.connect('wss://broker.hivemq.com:8884/mqtt');
-
-    client.on('connect', () => {
-      console.log('✅ Frontend conectado ao MQTT');
-      client.subscribe('sistema-rfid/monitor');
-    });
-
-    client.on('message', (topic, message) => {
-      try {
-        const payload = JSON.parse(message.toString());
-        console.log('📩 Mensagem recebida:', payload);
-
-        if (payload.participanteId) {
-          setParticipantes((listaAtual) => 
-            listaAtual.map((p) => {
-              // Convertendo para String para garantir que números e textos batam
-              if (String(p.id) === String(payload.participanteId)) {
-                console.log(`🔄 Atualizando card de: ${p.nome}`);
-                return { ...p, status: payload.tipo === 'entrada' };
-              }
-              return p;
-            })
-          );
-        }
-      } catch (err) {
-        console.error('Erro MQTT:', err);
-      }
-    });
-
-    return () => {
-      if (client) client.end();
-    };
-  }, []);
+  }, [buscarParticipantes]);
 
   const criarParticipante = async (novoParticipante) => {
     try {
-      await servicoParticipante.criar(novoParticipante);
-      alert('Participante criado com sucesso!');
+      const criado = await servicoParticipante.criar(novoParticipante);
+      setParticipantes([...participantes, criado]);
+      sucesso('Participante cadastrado com sucesso!');
       setModalAberto(false);
-      buscarParticipantes();
     } catch (err) {
-      alert('Erro: ' + formatarErro(err));
+      erroMsg(formatarErro(err));
     }
   };
 
-  const solicitarExclusao = (participanteAlvo) => {
-    const validacao = podeExcluir(usuario, participanteAlvo, 'participante');
-    if (!validacao.permitido) return alert(validacao.mensagem);
-    setParticipanteParaExcluir(participanteAlvo);
+  const solicitarExclusao = (participante) => {
+    setParticipanteParaExcluir(participante);
     setModalExclusaoAberto(true);
   };
 
-  const confirmarExclusao = async (email, senha) => {
+  const confirmarExclusao = async (emailConfirmacao, senhaConfirmacao) => {
     try {
-      await servicoParticipante.excluir(participanteParaExcluir.id, email, senha);
-      alert('Participante excluído com sucesso!');
+      await servicoParticipante.excluir(participanteParaExcluir.id, emailConfirmacao, senhaConfirmacao);
+      setParticipantes(participantes.filter(p => p.id !== participanteParaExcluir.id));
+      sucesso('Participante excluído com sucesso!');
       setModalExclusaoAberto(false);
       setParticipanteParaExcluir(null);
-      buscarParticipantes();
     } catch (err) {
-      alert('Falha ao excluir: ' + formatarErro(err));
+      erroMsg(formatarErro(err));
     }
   };
 
@@ -114,39 +75,66 @@ export default function PaginaParticipantes() {
   return (
     <Box>
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-        <Typography variant="h5" fontWeight="bold">Participantes RFID</Typography>
-        <Button variant="contained" color="success" startIcon={<AddIcon />} onClick={() => setModalAberto(true)}>
+        <Box>
+          <Typography variant="h5" fontWeight="bold" color="primary.main">
+            Participantes RFID
+          </Typography>
+          <Typography variant="body2" color="textSecondary">
+            Gerencie quem tem acesso e monitore entradas em tempo real.
+          </Typography>
+        </Box>
+        <Button 
+          variant="contained" 
+          color="success" 
+          startIcon={<AddIcon />} 
+          onClick={() => setModalAberto(true)}
+          sx={{ fontWeight: 'bold' }}
+        >
           Novo Participante
         </Button>
       </Box>
 
-      {erro && <Alert severity="error" sx={{ mb: 2 }}>{erro}</Alert>}
-
       <Grid container spacing={3}>
         <Grid item xs={12} md={8}>
-          <Grid container spacing={2}>
-            {participantes.map((p) => (
-              <Grid item xs={12} lg={6} key={p.id}>
-                <CartaoParticipante participante={p} aoExcluir={solicitarExclusao} />
-              </Grid>
-            ))}
-             {participantes.length === 0 && !erro && (
-              <Grid item xs={12}>
-                 <Typography color="textSecondary" textAlign="center" mt={4}>Nenhum participante cadastrado.</Typography>
-              </Grid>
-            )}
-          </Grid>
+          {participantes.length === 0 ? (
+            <Card sx={{ p: 4, textAlign: 'center', bgcolor: '#fff', borderRadius: 2 }}>
+              <Typography color="textSecondary">
+                Nenhum participante cadastrado.
+              </Typography>
+            </Card>
+          ) : (
+            <Grid container spacing={2}>
+              {participantes.map((p) => (
+                <Grid item xs={12} lg={6} key={p.id}>
+                  <CartaoParticipante 
+                    participante={p} 
+                    aoExcluir={solicitarExclusao} 
+                  />
+                </Grid>
+              ))}
+            </Grid>
+          )}
         </Grid>
 
         <Grid item xs={12} md={4}>
-          <Box sx={{ position: 'sticky', top: 20 }}>
+          <Box sx={{ position: { md: 'sticky' }, top: 100 }}>
             <MonitorAcessos />
           </Box>
         </Grid>
       </Grid>
 
-      <ModalParticipante aberto={modalAberto} aoFechar={() => setModalAberto(false)} aoSalvar={criarParticipante} />
-      <ModalConfirmarExclusao aberto={modalExclusaoAberto} aoFechar={() => { setModalExclusaoAberto(false); setParticipanteParaExcluir(null); }} nomeItem={participanteParaExcluir?.nome} aoConfirmar={confirmarExclusao} />
+      <ModalParticipante 
+        aberto={modalAberto} 
+        aoFechar={() => setModalAberto(false)} 
+        aoSalvar={criarParticipante} 
+      />
+      
+      <ModalConfirmarExclusao 
+        aberto={modalExclusaoAberto} 
+        aoFechar={() => { setModalExclusaoAberto(false); setParticipanteParaExcluir(null); }}
+        nomeItem={participanteParaExcluir?.nome}
+        aoConfirmar={confirmarExclusao}
+      />
     </Box>
   );
 }

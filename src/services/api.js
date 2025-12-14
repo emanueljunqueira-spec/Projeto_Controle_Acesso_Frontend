@@ -1,10 +1,9 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: process.env.REACT_APP_API_URL,
+  baseURL: 'http://localhost:3333', // <--- Endereço fixo do backend
 });
 
-// Interceptor para adicionar token automaticamente
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('rfid_token');
   if (token) {
@@ -13,14 +12,13 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Interceptor para tratamento de erros
 api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
       localStorage.removeItem('rfid_token');
       localStorage.removeItem('rfid_user');
-      window.location.reload();
+      window.location.href = '/login';
     }
     return Promise.reject(error);
   }

@@ -1,104 +1,93 @@
-import React, { useEffect, useState } from 'react';
-import { Box, Typography, Button, Alert, CircularProgress } from '@mui/material';
+import React, { useEffect, useState, useCallback } from 'react';
+import { Box, Typography, Button, CircularProgress } from '@mui/material';
 import { Add as AddIcon } from '@mui/icons-material';
+import { useMensagem } from '../contexts/ContextoMensagem';
 import servicoEvento from '../services/servicoEvento';
-import { formatarErro, podeExcluir } from '../utils/errorHandler';
-import { useAutenticacao } from '../contexts/ContextoAutenticacao';
+import { formatarErro } from '../utils/errorHandler';
+// Removida importação de useAutenticacao pois 'usuario' não era usado
+
 import ListaEventos from '../components/Eventos/ListaEventos';
 import FormEvento from '../components/Eventos/FormEvento';
 import ModalConfirmarExclusao from '../components/Modais/ModalConfirmarExclusao';
-import ModalParticipante from '../components/Modais/ModalParticipante';
-import servicoParticipante from '../services/servicoParticipante';
 import ModalParticipantesDoEvento from '../components/Eventos/ModalParticipantesDoEvento';
 
 export default function PaginaEventos() {
-  const { usuario } = useAutenticacao();
+  const { sucesso, erro: erroMsg } = useMensagem();
+  
   const [eventos, setEventos] = useState([]);
   const [carregando, setCarregando] = useState(true);
-  const [erro, setErro] = useState(null);
-  const [modalAberto, setModalAberto] = useState(false);
+  const [modalFormAberto, setModalFormAberto] = useState(false);
   const [eventoEdicao, setEventoEdicao] = useState(null);
   const [modalExclusaoAberto, setModalExclusaoAberto] = useState(false);
   const [eventoParaExcluir, setEventoParaExcluir] = useState(null);
-  const [modalCadastrarParticipanteAberto, setModalCadastrarParticipanteAberto] = useState(false);
-  const [eventoParaCadastro, setEventoParaCadastro] = useState(null);
-  const [modalListaParticipantesAberto, setModalListaParticipantesAberto] = useState(false);
-  const [eventoParaLista, setEventoParaLista] = useState(null);
+  const [modalParticipantesAberto, setModalParticipantesAberto] = useState(false);
+  const [eventoSelecionado, setEventoSelecionado] = useState(null);
 
-  const carregar = async () => {
+  // CORREÇÃO: useCallback
+  const carregarEventos = useCallback(async () => {
     try {
       setCarregando(true);
-      setErro(null);
       const dados = await servicoEvento.listar();
       setEventos(dados);
     } catch (err) {
-      setErro(formatarErro(err));
+      erroMsg(formatarErro(err));
     } finally {
       setCarregando(false);
     }
-  };
+  }, [erroMsg]);
 
-  useEffect(() => { carregar(); }, []);
+  useEffect(() => {
+    carregarEventos();
+  }, [carregarEventos]);
 
-  const novoEvento = () => { setEventoEdicao(null); setModalAberto(true); };
-  const editarEvento = (ev) => { setEventoEdicao(ev); setModalAberto(true); };
-
-  const salvarEvento = async (payload) => {
+  const salvarEvento = async (dadosEvento) => {
     try {
       if (eventoEdicao) {
-        await servicoEvento.atualizar(eventoEdicao.id, payload);
+        const atualizado = await servicoEvento.atualizar(eventoEdicao.id, dadosEvento);
+        setEventos(eventos.map(e => e.id === atualizado.id ? atualizado : e));
+        sucesso('Evento atualizado com sucesso!');
       } else {
-        await servicoEvento.criar(payload);
+        const novo = await servicoEvento.criar(dadosEvento);
+        setEventos([...eventos, novo]);
+        sucesso('Evento criado com sucesso!');
       }
-      setModalAberto(false);
+      setModalFormAberto(false);
       setEventoEdicao(null);
-      await carregar();
-      alert('Evento salvo com sucesso!');
     } catch (err) {
-      alert('Erro: ' + formatarErro(err));
+      erroMsg(formatarErro(err));
     }
   };
 
-  const solicitarExclusao = (ev) => {
-    const validacao = podeExcluir(usuario, { cargo: 'participante' }, 'usuario'); // reaproveita regra apenas para bloquear não-admin
-    if (!validacao.permitido) {
-      return alert(validacao.mensagem);
+  const confirmarExclusao = async (emailConfirmacao, senhaConfirmacao) => {
+    try {
+      await servicoEvento.excluir(eventoParaExcluir.id, emailConfirmacao, senhaConfirmacao);
+      setEventos(eventos.filter(e => e.id !== eventoParaExcluir.id));
+      sucesso('Evento excluído com sucesso!');
+      setModalExclusaoAberto(false);
+      setEventoParaExcluir(null);
+    } catch (err) {
+      erroMsg(formatarErro(err));
     }
-    setEventoParaExcluir(ev);
+  };
+
+  const aoClicarNovo = () => {
+    setEventoEdicao(null);
+    setModalFormAberto(true);
+  };
+
+  const aoClicarEditar = (evento) => {
+    setEventoEdicao(evento);
+    setModalFormAberto(true);
+  };
+
+  const aoClicarExcluir = (evento) => {
+    setEventoParaExcluir(evento);
     setModalExclusaoAberto(true);
   };
 
-  const confirmarExclusao = async (email, senha) => {
-    try {
-      // Passa o ID, o Email e a Senha para o serviço
-      await servicoEvento.excluir(eventoParaExcluir.id, email, senha);
-      
-      alert('Evento excluído com sucesso!'); // Feedback simples ou use um Alert no estado
-      setModalExclusaoAberto(false);
-      setEventoParaExcluir(null);
-      // Recarrega a lista
-      const listaAtualizada = await servicoEvento.listar();
-      setEventos(listaAtualizada);
-    } catch (err) {
-      alert('Falha ao excluir: ' + formatarErro(err));
-    }
-  };
-
-  const abrirListaParticipantes = (ev) => {
-    setEventoParaLista(ev);
-    setModalListaParticipantesAberto(true);
-  };
-
-  const salvarParticipante = async (novo) => {
-    try {
-      const payload = eventoParaCadastro ? { ...novo, evento_id: eventoParaCadastro.id } : novo;
-      await servicoParticipante.criar(payload);
-      setModalCadastrarParticipanteAberto(false);
-      setEventoParaCadastro(null);
-      alert('Participante cadastrado com sucesso!');
-    } catch (err) {
-      alert('Erro: ' + formatarErro(err));
-    }
+  const aoClicarVerParticipantes = (evento) => {
+    setEventoSelecionado(evento);
+    setModalParticipantesAberto(true);
   };
 
   if (carregando) {
@@ -112,19 +101,38 @@ export default function PaginaEventos() {
   return (
     <Box>
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-        <Typography variant="h5" fontWeight="bold">Eventos</Typography>
-        <Button variant="contained" startIcon={<AddIcon />} onClick={novoEvento}>Novo Evento</Button>
+        <Typography variant="h5" fontWeight="bold" color="primary.main">
+          Gestão de Eventos
+        </Typography>
+        <Button 
+          variant="contained" 
+          startIcon={<AddIcon />} 
+          onClick={aoClicarNovo}
+          sx={{ fontWeight: 'bold' }}
+        >
+          Novo Evento
+        </Button>
       </Box>
 
-      {erro && (<Alert severity="error" sx={{ mb: 2 }}>{erro}</Alert>)}
+      <ListaEventos 
+        eventos={eventos} 
+        onEditar={aoClicarEditar} 
+        onExcluir={aoClicarExcluir} 
+        onVerParticipantes={aoClicarVerParticipantes} 
+      />
 
-      <ListaEventos eventos={eventos} onEditar={editarEvento} onExcluir={solicitarExclusao} onVerParticipantes={abrirListaParticipantes} />
-
-      {eventos.length === 0 && !erro && (
-        <Typography color="textSecondary" textAlign="center" mt={4}>Nenhum evento cadastrado.</Typography>
+      {eventos.length === 0 && (
+        <Typography color="textSecondary" textAlign="center" mt={4}>
+          Nenhum evento cadastrado.
+        </Typography>
       )}
 
-      <FormEvento aberto={modalAberto} aoFechar={() => setModalAberto(false)} aoSalvar={salvarEvento} eventoInicial={eventoEdicao} />
+      <FormEvento 
+        aberto={modalFormAberto} 
+        aoFechar={() => { setModalFormAberto(false); setEventoEdicao(null); }} 
+        aoSalvar={salvarEvento} 
+        eventoInicial={eventoEdicao} 
+      />
 
       <ModalConfirmarExclusao
         aberto={modalExclusaoAberto}
@@ -133,16 +141,10 @@ export default function PaginaEventos() {
         aoConfirmar={confirmarExclusao}
       />
 
-      <ModalParticipante
-        aberto={modalCadastrarParticipanteAberto}
-        aoFechar={() => { setModalCadastrarParticipanteAberto(false); setEventoParaCadastro(null); }}
-        aoSalvar={salvarParticipante}
-      />
-
       <ModalParticipantesDoEvento
-        aberto={modalListaParticipantesAberto}
-        evento={eventoParaLista}
-        aoFechar={() => { setModalListaParticipantesAberto(false); setEventoParaLista(null); }}
+        aberto={modalParticipantesAberto}
+        evento={eventoSelecionado}
+        aoFechar={() => { setModalParticipantesAberto(false); setEventoSelecionado(null); }}
       />
     </Box>
   );
